@@ -29,6 +29,33 @@ export default class WereadPlugin extends Plugin {
 	private syncing = false;
 	private scheduledSyncTimer: number | null = null;
 	localBook!: LocalBookService;
+	private apiRouter!: ApiRouter;
+
+	/**
+	 * 给“读书助手”用：返回微信读书书架上的书（书名、作者、bookId）。
+	 * 配了微信读书 API Key 时取完整书架，否则只能取有笔记的书。
+	 */
+	async getShelfBooks(): Promise<{ bookId: string; title: string; author: string }[]> {
+		const result = new Map<string, { bookId: string; title: string; author: string }>();
+		const add = (b: { bookId?: unknown; title?: unknown; author?: unknown } | undefined) => {
+			if (!b?.bookId || !b?.title) return;
+			const bookId = String(b.bookId);
+			if (!result.has(bookId)) result.set(bookId, { bookId, title: String(b.title), author: String(b.author ?? '') });
+		};
+		if (get(settingsStore).wereadApiKey) {
+			const shelf = await this.apiRouter.callAgentGateway<{ books?: { bookId?: string; title?: string; author?: string }[] }>(
+				'/shelf/sync'
+			);
+			(shelf?.books ?? []).forEach(add);
+		}
+		try {
+			const notebooks = await this.apiRouter.getNotebooksWithRetry();
+			(notebooks ?? []).forEach((n: any) => add(n?.book));
+		} catch (e) {
+			console.warn('[weread plugin] 取有笔记的书失败', e);
+		}
+		return Array.from(result.values());
+	}
 
 	onload() {
 		console.log('load weread plugin');
@@ -41,6 +68,7 @@ export default class WereadPlugin extends Plugin {
 		const fileManager = new FileManager(this.app.vault, this.app.metadataCache, this.app);
 		this.fileManager = fileManager;
 		const apiRouter = new ApiRouter();
+		this.apiRouter = apiRouter;
 		this.syncNotebooks = new SyncNotebooks(fileManager, apiRouter, this.app.vault);
 		this.bookshelfService = new WereadBookshelfService(fileManager, apiRouter);
 		this.syncReadingStats = new SyncReadingStats(this.app.vault, apiRouter);
