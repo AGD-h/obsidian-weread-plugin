@@ -50,7 +50,10 @@ export default class WereadPlugin extends Plugin {
 		// 启动时同步 Cookie 到 partition，供 webview 使用（非阻塞）
 		this.syncCookiesToPartition();
 
-		// 笔记里的划线链接（微信读书网页阅读器地址）在内置阅读视图中打开
+		// 笔记里的划线链接（微信读书网页阅读器的章节地址）在内置阅读视图中打开。
+		// 阅读模式下链接是 <a>，在捕获阶段拦截；编辑/实时预览模式下 Obsidian 用 window.open 打开外链，一并拦截。
+		const isChapterLink = (url: string) =>
+			/^https:\/\/weread\.qq\.com\/web\/reader\/[^/?#k]+k[0-9a-f]+/.test(url);
 		this.registerDomEvent(
 			document,
 			'click',
@@ -58,7 +61,7 @@ export default class WereadPlugin extends Plugin {
 				const target = event.target as HTMLElement | null;
 				const anchor = target?.closest?.('a') as HTMLAnchorElement | null;
 				const href = anchor?.getAttribute('href') ?? '';
-				if (!href.startsWith('https://weread.qq.com/web/reader/')) {
+				if (!isChapterLink(href)) {
 					return;
 				}
 				event.preventDefault();
@@ -67,6 +70,18 @@ export default class WereadPlugin extends Plugin {
 			},
 			true
 		);
+		const originalOpen = window.open;
+		window.open = ((url?: string | URL, ...rest: unknown[]) => {
+			const href = url ? String(url) : '';
+			if (isChapterLink(href)) {
+				this.activateReadingView('TAB', href);
+				return null;
+			}
+			return (originalOpen as (...args: unknown[]) => Window | null).call(window, url, ...rest);
+		}) as typeof window.open;
+		this.register(() => {
+			window.open = originalOpen;
+		});
 
 		const ribbonEl = this.addRibbonIcon('book-open', '打开微信读书书架', (event) => {
 			if (event.button === 0) {
