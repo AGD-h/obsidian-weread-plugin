@@ -4,7 +4,6 @@ import {
 	MarkdownPostProcessorContext,
 	MarkdownView,
 	TFile,
-	TFolder,
 	WorkspaceLeaf
 } from 'obsidian';
 import { RangeSetBuilder } from '@codemirror/state';
@@ -154,21 +153,27 @@ export default class LocalBookService {
 	}
 
 	/** 原文根目录下与书名最接近的文件夹（按去掉空白标点后的公共前缀长度） */
-	findBookFolder(title: string): TFolder | null {
-		const rootFolder = this.app.vault.getAbstractFileByPath(this.root);
-		if (!(rootFolder instanceof TFolder)) return null;
+	findBookFolder(title: string): string | null {
+		// 直接从文件列表里取原文根目录下的第一级文件夹名，不依赖文件夹对象
+		const prefix = this.root + '/';
+		const names = new Set<string>();
+		for (const f of this.app.vault.getMarkdownFiles()) {
+			if (!f.path.startsWith(prefix)) continue;
+			const rest = f.path.slice(prefix.length);
+			if (rest.includes('/')) names.add(rest.split('/')[0]);
+		}
 		const target = normOnly(title);
-		let best: TFolder | null = null;
+		let best: string | null = null;
 		let bestScore = 0;
-		for (const child of rootFolder.children) {
-			if (!(child instanceof TFolder) || child.name.startsWith('_')) continue;
-			const score = commonPrefix(normOnly(child.name), target);
+		names.forEach((name) => {
+			if (name.startsWith('_')) return;
+			const score = commonPrefix(normOnly(name), target);
 			if (score > bestScore) {
-				best = child;
+				best = name;
 				bestScore = score;
 			}
-		}
-		return bestScore >= MIN_MATCH ? best : null;
+		});
+		return best && bestScore >= MIN_MATCH ? prefix + best : null;
 	}
 
 	/** 原文文件所在的书文件夹（原文根目录下的第一级） */
@@ -186,31 +191,26 @@ export default class LocalBookService {
 		return text;
 	}
 
-	private markdownFilesIn(folder: TFolder): TFile[] {
-		const files: TFile[] = [];
-		const walk = (f: TFolder) => {
-			for (const c of f.children) {
-				if (c instanceof TFolder) walk(c);
-				else if (c instanceof TFile && c.extension === 'md') files.push(c);
-			}
-		};
-		walk(folder);
-		return files.sort((a, b) => a.path.localeCompare(b.path, 'zh'));
-	}
-
 	/** 点划线：在本地原文里找到最像的那一句并打开；找不到返回 false */
-	async openHighlight(bookTitle: string, markText: string): Promise<boolean> {
+	async openHighlight(
+		bookTitle: string,
+		markText: string
+	): Promise<'ok' | 'no-folder' | 'no-match'> {
 		const folder = this.findBookFolder(bookTitle);
-		if (!folder) return false;
+		if (!folder) return 'no-folder';
+		const files = this.app.vault
+			.getMarkdownFiles()
+			.filter((f) => f.path.startsWith(folder + '/'))
+			.sort((x, y) => x.path.localeCompare(y.path, 'zh'));
 		let best: { file: TFile; match: TextMatch } | null = null;
-		for (const file of this.markdownFilesIn(folder)) {
+		for (const file of files) {
 			const match = findInText(await this.readNormalized(file), markText);
 			if (match && (!best || match.score > best.match.score)) best = { file, match };
 			if (best?.match.score === 1) break;
 		}
-		if (!best) return false;
+		if (!best) return 'no-match';
 		await this.openAt(best.file, best.match.start, best.match.end);
-		return true;
+		return 'ok';
 	}
 
 	private async openAt(file: TFile, start: number, end: number) {

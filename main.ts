@@ -75,9 +75,25 @@ export default class WereadPlugin extends Plugin {
 				: undefined;
 			// 实时预览下光标所在行会显示 Markdown 源码，去掉链接地址部分
 			const text = markText.replace(/\]\(<?[^)]*>?\)/g, '');
-			if (title && text && (await localBook.openHighlight(String(title), text))) {
-				return;
+			let reason = '';
+			if (!title) {
+				reason = `当前笔记（${active?.path ?? '无'}）没有 title，无法确定是哪本书`;
+			} else if (!text.trim()) {
+				reason = '没取到划线文字';
+			} else {
+				try {
+					const result = await localBook.openHighlight(String(title), text);
+					if (result === 'ok') return;
+					reason =
+						result === 'no-folder'
+							? '本地原文文件夹里没找到这本书'
+							: '本地原文里没找到这句（版本文字可能不同）';
+				} catch (e) {
+					console.error('[weread plugin] 打开本地原文失败', e);
+					reason = `打开本地原文出错：${e}`;
+				}
 			}
+			new Notice(`${reason}，改为打开微信读书`);
 			this.activateReadingView('TAB', href);
 		};
 		this.registerDomEvent(
