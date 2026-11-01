@@ -342,6 +342,8 @@ export const parseReviews = (resp: BookReviewResponse): Review[] => {
 			created: created,
 			createTime: createTime,
 			chapterUid: review.chapterUid,
+			chapterHash:
+				review.chapterUid !== undefined ? encodeWereadId(String(review.chapterUid)) : undefined,
 			chapterTitle: review.chapterTitle || review.refMpInfo?.title,
 			content: convertTags ? convertTagToBiLink(review.content) : review.content,
 			reviewId: reviewId?.replace(/[_~]/g, '-'),

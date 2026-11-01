@@ -108,7 +108,7 @@ lastReadDate: {{ metaData.lastReadDate }}
 {% if chapter.reviews %}
 {% for review in chapter.reviews %}
 ### 划线评论
-> 📌 {{ review.abstract | trim }} ^{{ review.reviewId }}
+{% if metaData.pcUrl and review.chapterHash %}> 📌 [{{ review.abstract | trim }}](<{{ metaData.pcUrl }}k{{ review.chapterHash }}>) ^{{ review.reviewId }}{% else %}> 📌 {{ review.abstract | trim }} ^{{ review.reviewId }}{% endif %}
     💭 {{ review.content }}
     ⏱ {{ review.createTime }}
 {% endfor %}

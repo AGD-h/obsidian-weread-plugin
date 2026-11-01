@@ -420,6 +420,7 @@ export type ChapterReview = {
 export type Review = {
 	reviewId: string;
 	chapterUid?: number;
+	chapterHash?: string;
 	chapterTitle?: string;
 	created: number;
 	createTime: string;
