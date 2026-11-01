@@ -4365,3 +4365,26 @@
 	justify-content: center;
 }
 
+
+/* 本地原文里的微信读书划线：观点=直线、疑问=波浪线、金句=马克笔 */
+mark.wr-local-hl,
+.wr-local-hl {
+	background: transparent;
+	color: inherit;
+	text-decoration-line: underline;
+	text-decoration-thickness: 2px;
+	text-underline-offset: 4px;
+	text-decoration-color: var(--color-blue);
+}
+.wr-local-hl-question {
+	text-decoration-style: wavy;
+	text-decoration-color: var(--color-orange);
+}
+mark.wr-local-hl-quote,
+.wr-local-hl-quote {
+	text-decoration-line: none;
+	background: rgba(var(--color-yellow-rgb), 0.35);
+}
+.wr-local-hl-review {
+	cursor: help;
+}

@@ -63,6 +63,8 @@ module.exports = {
 	},
 	externals: {
 		electron: 'commonjs2 electron',
-		obsidian: 'commonjs2 obsidian'
+		obsidian: 'commonjs2 obsidian',
+		'@codemirror/state': 'commonjs2 @codemirror/state',
+		'@codemirror/view': 'commonjs2 @codemirror/view'
 	}
 };

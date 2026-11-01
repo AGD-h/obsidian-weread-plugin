@@ -13,6 +13,7 @@ import { WEREAD_BROWSER_VIEW_ID, WereadReadingView } from './src/components/were
 import { WEREAD_BOOKSHELF_VIEW_ID, WereadBookshelfView } from './src/components/wereadBookshelf';
 import { WEREAD_READING_STATS_VIEW_ID, WereadReadingStatsView } from './src/components/wereadReadingStats';
 import { WEREAD_BOOK_DETAIL_VIEW_ID, WereadBookDetailView } from './src/components/wereadBookDetailView';
+import LocalBookService from './src/localBook';
 import './style.css';
 export default class WereadPlugin extends Plugin {
 	private syncNotebooks: SyncNotebooks;
@@ -50,10 +51,46 @@ export default class WereadPlugin extends Plugin {
 		// 启动时同步 Cookie 到 partition，供 webview 使用（非阻塞）
 		this.syncCookiesToPartition();
 
-		// 笔记里的划线链接（微信读书网页阅读器的章节地址）在内置阅读视图中打开。
+		// 本地原文：划线跳到原文那一句；打开原文时标出划过的句子
+		const localBook = new LocalBookService(this.app);
+		this.registerMarkdownPostProcessor(localBook.postProcessor());
+		this.registerEditorExtension(localBook.editorExtension());
+		this.registerEvent(
+			this.app.vault.on('modify', (file) => {
+				if (file instanceof TFile && !localBook.isLocalBookFile(file)) {
+					localBook.clearCache();
+				}
+			})
+		);
+
+		// 点笔记里的划线（微信读书章节地址）：有本地原文就跳到原文那一句，否则在内置阅读视图打开。
 		// 阅读模式下链接是 <a>，在捕获阶段拦截；编辑/实时预览模式下 Obsidian 用 window.open 打开外链，一并拦截。
 		const isChapterLink = (url: string) =>
 			/^https:\/\/weread\.qq\.com\/web\/reader\/[^/?#k]+k[0-9a-f]+/.test(url);
+		let lastLinkText = '';
+		const openChapterLink = async (href: string, markText: string) => {
+			const active = this.app.workspace.getActiveFile();
+			const title = active
+				? this.app.metadataCache.getFileCache(active)?.frontmatter?.title
+				: undefined;
+			// 实时预览下光标所在行会显示 Markdown 源码，去掉链接地址部分
+			const text = markText.replace(/\]\(<?[^)]*>?\)/g, '');
+			if (title && text && (await localBook.openHighlight(String(title), text))) {
+				return;
+			}
+			this.activateReadingView('TAB', href);
+		};
+		this.registerDomEvent(
+			document,
+			'mousedown',
+			(event: MouseEvent) => {
+				const target = event.target as HTMLElement | null;
+				const anchor = target?.closest?.('a');
+				const line = target?.closest?.('.cm-line');
+				lastLinkText = (anchor ?? line)?.textContent ?? '';
+			},
+			true
+		);
 		this.registerDomEvent(
 			document,
 			'click',
@@ -66,7 +103,7 @@ export default class WereadPlugin extends Plugin {
 				}
 				event.preventDefault();
 				event.stopPropagation();
-				this.activateReadingView('TAB', href);
+				openChapterLink(href, anchor?.textContent ?? '');
 			},
 			true
 		);
@@ -74,7 +111,7 @@ export default class WereadPlugin extends Plugin {
 		window.open = ((url?: string | URL, ...rest: unknown[]) => {
 			const href = url ? String(url) : '';
 			if (isChapterLink(href)) {
-				this.activateReadingView('TAB', href);
+				openChapterLink(href, lastLinkText);
 				return null;
 			}
 			return (originalOpen as (...args: unknown[]) => Window | null).call(window, url, ...rest);

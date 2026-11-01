@@ -71,6 +71,7 @@ export class WereadSettingsTab extends PluginSettingTab {
 		this.showApiKeySetting();
 
 		this.notebookFolder();
+		this.localBookFolder();
 		this.bookshelfSettings();
 		this.syncModeSettings();
 		this.scheduledSync();
@@ -194,6 +195,20 @@ export class WereadSettingsTab extends PluginSettingTab {
 					modal.open();
 				});
 			});
+	}
+
+	private localBookFolder(): void {
+		new Setting(this.containerEl)
+			.setName('本地原文位置')
+			.setDesc('Epub Importer 导入的原文所在文件夹。点划线时会跳到这里对应的那一句，打开原文时会标出划过的句子')
+			.addText((text) =>
+				text
+					.setPlaceholder('读书/原文')
+					.setValue(get(settingsStore).localBookFolder ?? '读书/原文')
+					.onChange((value: string) => {
+						settingsStore.actions.setLocalBookFolder(value.trim() || '读书/原文');
+					})
+			);
 	}
 
 	private bookOpenModeSetting(): void {
