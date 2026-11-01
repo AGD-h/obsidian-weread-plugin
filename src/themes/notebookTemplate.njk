@@ -76,6 +76,7 @@ lastReadDate: {{ metaData.lastReadDate }}
 {% endif %}
 {% for highlight in chapter.highlights %}
 {% set rangeParts = highlight.range | split("-") %}
+{% set styleLabel = {"0": "观点", "1": "金句", "2": "疑问"}[highlight.style] %}
 {% if metaData.pcUrl and highlight.chapterHash %}{% set deeplink = metaData.pcUrl + "k" + highlight.chapterHash %}{% else %}{% set deeplink = "weread://bestbookmark?bookId=" + metaData.bookId + "&chapterUid=" + highlight.chapterUid + "&rangeStart=" + rangeParts[0] + "&rangeEnd=" + rangeParts[1] %}{% endif %}
 {# 普通用户划线（不显示热门）：📌 #}
 {% if highlight.reviewContent %}

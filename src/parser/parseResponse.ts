@@ -125,9 +125,7 @@ export const parseHighlights = (
 			style: highlight.style,
 			colorStyle: highlight.colorStyle,
 			chapterTitle: chapterInfo?.title || '未知章节',
-			chapterHash: CryptoJS.MD5(String(highlight.chapterUid))
-				.toString(CryptoJS.enc.Hex)
-				.slice(0, 3),
+			chapterHash: encodeWereadId(String(highlight.chapterUid)),
 			markText: markText,
 			reviewContent: addIndentToParagraphs(reviewContent)
 		};
@@ -426,9 +424,10 @@ const getFa = (id: string): [string, string[]] => {
 	return ['4', [d]];
 };
 
-export const getPcUrl = (bookId: string): string => {
-	const str = CryptoJS.MD5(bookId).toString(CryptoJS.enc.Hex);
-	const fa = getFa(bookId);
+// 微信读书网页版对 bookId 和 chapterUid 用同一种编码生成阅读器地址
+export const encodeWereadId = (id: string): string => {
+	const str = CryptoJS.MD5(id).toString(CryptoJS.enc.Hex);
+	const fa = getFa(id);
 	let strSub = str.slice(0, 3);
 	strSub += fa[0];
 	strSub += '2' + str.slice(str.length - 2, str.length);
@@ -451,6 +450,9 @@ export const getPcUrl = (bookId: string): string => {
 	}
 
 	strSub += CryptoJS.MD5(strSub).toString(CryptoJS.enc.Hex).slice(0, 3);
-	const prefix = 'https://weread.qq.com/web/reader/';
-	return prefix + strSub;
+	return strSub;
+};
+
+export const getPcUrl = (bookId: string): string => {
+	return 'https://weread.qq.com/web/reader/' + encodeWereadId(bookId);
 };
