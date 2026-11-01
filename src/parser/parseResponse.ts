@@ -125,6 +125,9 @@ export const parseHighlights = (
 			style: highlight.style,
 			colorStyle: highlight.colorStyle,
 			chapterTitle: chapterInfo?.title || '未知章节',
+			chapterHash: CryptoJS.MD5(String(highlight.chapterUid))
+				.toString(CryptoJS.enc.Hex)
+				.slice(0, 3),
 			markText: markText,
 			reviewContent: addIndentToParagraphs(reviewContent)
 		};

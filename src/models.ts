@@ -393,6 +393,7 @@ export type Highlight = {
 	chapterUid: number;
 	chapterIdx: number;
 	chapterTitle: string;
+	chapterHash?: string;
 	markText: string;
 	style: number;
 	colorStyle: number;

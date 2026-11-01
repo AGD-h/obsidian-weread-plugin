@@ -50,6 +50,24 @@ export default class WereadPlugin extends Plugin {
 		// 启动时同步 Cookie 到 partition，供 webview 使用（非阻塞）
 		this.syncCookiesToPartition();
 
+		// 笔记里的划线链接（微信读书网页阅读器地址）在内置阅读视图中打开
+		this.registerDomEvent(
+			document,
+			'click',
+			(event: MouseEvent) => {
+				const target = event.target as HTMLElement | null;
+				const anchor = target?.closest?.('a') as HTMLAnchorElement | null;
+				const href = anchor?.getAttribute('href') ?? '';
+				if (!href.startsWith('https://weread.qq.com/web/reader/')) {
+					return;
+				}
+				event.preventDefault();
+				event.stopPropagation();
+				this.activateReadingView('TAB', href);
+			},
+			true
+		);
+
 		const ribbonEl = this.addRibbonIcon('book-open', '打开微信读书书架', (event) => {
 			if (event.button === 0) {
 				this.activateBookshelfView();

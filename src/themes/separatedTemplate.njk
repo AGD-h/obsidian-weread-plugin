@@ -26,7 +26,7 @@ lastReadDate: {{ metaData.lastReadDate }}
 {% endif %}
 {% for highlight in chapter.highlights %}
 {% set rangeParts = highlight.range | split("-") %}
-{% set deeplink = "weread://bestbookmark?bookId=" + metaData.bookId + "&chapterUid=" + highlight.chapterUid + "&rangeStart=" + rangeParts[0] + "&rangeEnd=" + rangeParts[1] %}
+{% if metaData.pcUrl and highlight.chapterHash %}{% set deeplink = metaData.pcUrl + "k" + highlight.chapterHash %}{% else %}{% set deeplink = "weread://bestbookmark?bookId=" + metaData.bookId + "&chapterUid=" + highlight.chapterUid + "&rangeStart=" + rangeParts[0] + "&rangeEnd=" + rangeParts[1] %}{% endif %}
 {% if syncPopularHighlightsToggle and highlight.isPopular %}
 > 📌🔥 [{{ highlight.markText | trim }}](<{{ deeplink }}>)  
 > 🔥 {{ highlight.popularCount }} 人共读 ^{{ highlight.bookmarkId }}
