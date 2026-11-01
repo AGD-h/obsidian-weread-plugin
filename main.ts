@@ -74,7 +74,9 @@ export default class WereadPlugin extends Plugin {
 				? this.app.metadataCache.getFileCache(active)?.frontmatter?.title
 				: undefined;
 			// 实时预览下光标所在行会显示 Markdown 源码，去掉链接地址部分
-			const text = markText.replace(/\]\(<?[^)]*>?\)/g, '');
+			const text = markText
+				.replace(/\]\(<?[^)]*>?\)/g, '')
+				.replace(/\^[\w-]+/g, '');
 			let reason = '';
 			if (!title) {
 				reason = `当前笔记（${active?.path ?? '无'}）没有 title，无法确定是哪本书`;
@@ -103,7 +105,17 @@ export default class WereadPlugin extends Plugin {
 				const target = event.target as HTMLElement | null;
 				const anchor = target?.closest?.('a');
 				const line = target?.closest?.('.cm-line');
-				lastLinkText = (anchor ?? line)?.textContent ?? '';
+				if (anchor) {
+					lastLinkText = anchor.textContent ?? '';
+				} else if (line) {
+					// 实时预览：只取这一行里链接文字的部分，取不到再用整行
+					const linkText = Array.from(line.querySelectorAll('.cm-link'))
+						.map((el) => el.textContent ?? '')
+						.join('');
+					lastLinkText = linkText || line.textContent || '';
+				} else {
+					lastLinkText = '';
+				}
 			},
 			true
 		);

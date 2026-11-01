@@ -125,7 +125,7 @@ export const findInText = (content: NormalizedText, markText: string): TextMatch
 		}
 	}
 	const score = bestDistinct / grams;
-	const minScore = needle.length >= 30 ? 0.3 : MIN_SCORE;
+	const minScore = needle.length >= 20 ? 0.3 : MIN_SCORE;
 	if (score < minScore) return null;
 	return toOriginal(bestFrom, Math.min(hay.length, bestTo), score);
 };
