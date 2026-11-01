@@ -61,12 +61,41 @@ class ApiRouter {
 		if (this.useV2()) {
 			try {
 				const result = await this.v2Manager.getNotebookHighlights(bookId);
-				if (result) return result as HighlightResponse;
+				if (result) return this.mergeHighlightStyle(bookId, result as HighlightResponse);
 			} catch (e) {
 				console.warn('V2 getNotebookHighlights 调用失败，回退到 V1', e);
 			}
 		}
 		return this.v1Manager.getNotebookHighlights(bookId);
+	}
+
+	/**
+	 * V2 接口不返回划线样式（直线/马克笔/波浪线），V1 接口有。
+	 * 用 V1 补上 style 字段；V1 失败（如没有 Cookie）时保持 V2 结果不变。
+	 */
+	private async mergeHighlightStyle(
+		bookId: string,
+		v2: HighlightResponse
+	): Promise<HighlightResponse> {
+		try {
+			const v1 = await this.v1Manager.getNotebookHighlights(bookId);
+			if (!v1?.updated?.length || !v2?.updated?.length) return v2;
+			const byId = new Map<string, number>();
+			const byPos = new Map<string, number>();
+			for (const h of v1.updated) {
+				if (h.style === undefined || h.style === null) continue;
+				if (h.bookmarkId) byId.set(h.bookmarkId, h.style);
+				byPos.set(`${h.chapterUid}|${h.range}`, h.style);
+			}
+			for (const h of v2.updated) {
+				if (h.style !== undefined && h.style !== null) continue;
+				const style = byId.get(h.bookmarkId) ?? byPos.get(`${h.chapterUid}|${h.range}`);
+				if (style !== undefined) h.style = style;
+			}
+		} catch (e) {
+			console.warn('[weread plugin] 用 V1 补划线样式失败，保留 V2 结果', e);
+		}
+		return v2;
 	}
 
 	async getNotebookReviews(bookId: string, isArticle = false): Promise<BookReviewResponse | undefined> {

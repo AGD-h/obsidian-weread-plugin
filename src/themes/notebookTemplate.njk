@@ -27,17 +27,20 @@ lastReadDate: {{ metaData.lastReadDate }}
 {% endif %}
 {% for highlight in chapter.highlights %}
 {% set rangeParts = highlight.range | split("-") %}
+{% set styleLabel = {"0": "观点", "1": "金句", "2": "疑问"}[highlight.style] %}
 {% set deeplink = "weread://bestbookmark?bookId=" + metaData.bookId + "&chapterUid=" + highlight.chapterUid + "&rangeStart=" + rangeParts[0] + "&rangeEnd=" + rangeParts[1] %}
 {% if highlight.isPopular and highlight.isUserHighlight %}
 {# 用户自己的划线 + 热门：📌🔥 + 共读人数 #}
 {% if highlight.reviewContent %}
 > 📌🔥 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
-> 🔥 {{ highlight.popularCount }} 人共读
+{% if styleLabel %}> 🏷 {{ styleLabel }}
+{% endif %}> 🔥 {{ highlight.popularCount }} 人共读
 > 💭 {{ highlight.reviewContent }} 
 > ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 {% else %}
 > 📌🔥 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
-> 🔥 {{ highlight.popularCount }} 人共读
+{% if styleLabel %}> 🏷 {{ styleLabel }}
+{% endif %}> 🔥 {{ highlight.popularCount }} 人共读
 > ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 
 {% endif %}
@@ -50,11 +53,13 @@ lastReadDate: {{ metaData.lastReadDate }}
 {# 普通用户划线（非热门）：📌 #}
 {% if highlight.reviewContent %}
 > 📌 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
-> 💭 {{ highlight.reviewContent }} 
+{% if styleLabel %}> 🏷 {{ styleLabel }}
+{% endif %}> 💭 {{ highlight.reviewContent }} 
 > ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 {% else %}
 > 📌 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
-> ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
+{% if styleLabel %}> 🏷 {{ styleLabel }}
+{% endif %}> ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 
 {% endif %}
 {% endif %}
@@ -75,11 +80,13 @@ lastReadDate: {{ metaData.lastReadDate }}
 {# 普通用户划线（不显示热门）：📌 #}
 {% if highlight.reviewContent %}
 > 📌 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
- 💭 {{ highlight.reviewContent }} 
+{% if styleLabel %}> 🏷 {{ styleLabel }}
+{% endif %} 💭 {{ highlight.reviewContent }} 
  ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 {% else %}
 > 📌 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
-> ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
+{% if styleLabel %}> 🏷 {{ styleLabel }}
+{% endif %}> ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 
 {% endif %}
 {% endfor %}
