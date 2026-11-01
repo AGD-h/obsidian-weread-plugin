@@ -23,6 +23,7 @@ export default class WereadPlugin extends Plugin {
 	private wereadSettingsTab!: WereadSettingsTab;
 	private syncing = false;
 	private scheduledSyncTimer: number | null = null;
+	localBook!: LocalBookService;
 
 	onload() {
 		console.log('load weread plugin');
@@ -53,6 +54,7 @@ export default class WereadPlugin extends Plugin {
 
 		// 本地原文：划线跳到原文那一句；打开原文时标出划过的句子
 		const localBook = new LocalBookService(this.app);
+		this.localBook = localBook;
 		this.registerMarkdownPostProcessor(localBook.postProcessor());
 		this.registerEditorExtension(localBook.editorExtension());
 		this.registerEvent(
@@ -73,28 +75,10 @@ export default class WereadPlugin extends Plugin {
 			const title = active
 				? this.app.metadataCache.getFileCache(active)?.frontmatter?.title
 				: undefined;
-			// 实时预览下光标所在行会显示 Markdown 源码，去掉链接地址部分
-			const text = markText
-				.replace(/\]\(<?[^)]*>?\)/g, '')
-				.replace(/\^[\w-]+/g, '');
-			let reason = '';
-			if (!title) {
-				reason = `当前笔记（${active?.path ?? '无'}）没有 title，无法确定是哪本书`;
-			} else if (!text.trim()) {
-				reason = '没取到划线文字';
-			} else {
-				try {
-					const result = await localBook.openHighlight(String(title), text);
-					if (result === 'ok') return;
-					reason =
-						result === 'no-folder'
-							? '本地原文文件夹里没找到这本书'
-							: '本地原文里没找到这句（版本文字可能不同）';
-				} catch (e) {
-					console.error('[weread plugin] 打开本地原文失败', e);
-					reason = `打开本地原文出错：${e}`;
-				}
-			}
+			const reason = title
+				? await this.openLocalHighlight(String(title), markText)
+				: `当前笔记（${active?.path ?? '无'}）没有 title，无法确定是哪本书`;
+			if (!reason) return;
 			new Notice(`${reason}，改为打开微信读书`);
 			this.activateReadingView('TAB', href);
 		};
@@ -368,6 +352,25 @@ export default class WereadPlugin extends Plugin {
 		}
 		await this.fileManager.deleteNotebookFile(targetFile);
 		new Notice('本地文件已删除');
+	}
+
+	/** 在本地原文里打开这条划线；成功返回 null，否则返回没打开的原因 */
+	async openLocalHighlight(bookTitle: string, markText: string): Promise<string | null> {
+		// 实时预览下取到的文字可能带链接地址和块编号，去掉
+		const text = markText
+			.replace(/\]\(<?[^)]*>?\)/g, '')
+			.replace(/\^[\w-]+/g, '');
+		if (!text.trim()) return '没取到划线文字';
+		try {
+			const result = await this.localBook.openHighlight(bookTitle, text);
+			if (result === 'ok') return null;
+			return result === 'no-folder'
+				? '本地原文文件夹里没找到这本书'
+				: '本地原文里没找到这句（版本文字可能不同）';
+		} catch (e) {
+			console.error('[weread plugin] 打开本地原文失败', e);
+			return `打开本地原文出错：${e}`;
+		}
 	}
 
 	async activateReadingView(type: string, url?: string) {

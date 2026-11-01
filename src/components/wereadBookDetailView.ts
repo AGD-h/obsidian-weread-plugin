@@ -2,7 +2,7 @@ import { ItemView, WorkspaceLeaf, setIcon, Notice, TFile } from 'obsidian';
 import { get } from 'svelte/store';
 import ApiRouter from '../api-router';
 import { settingsStore } from '../settings';
-import { getPcUrl } from '../parser/parseResponse';
+import { encodeWereadId, getPcUrl } from '../parser/parseResponse';
 import type {
 	BookDetailResponse,
 	BookProgressResponse,
@@ -582,6 +582,7 @@ export class WereadBookDetailView extends ItemView {
 
 				// 操作按钮（inline 在 meta 行右侧）
 				const actions = meta.createDiv({ cls: 'weread-book-detail-hl-actions' });
+				this.createLocalButton(actions, h.markText);
 				this.createDeepLinkButton(actions, this.buildDeepLink(h.chapterUid, h.range));
 				this.createCopyButton(actions, h.markText);
 			}
@@ -757,6 +758,7 @@ export class WereadBookDetailView extends ItemView {
 
 				// 操作按钮（inline 在 meta 行右侧）
 				const actions = meta.createDiv({ cls: 'weread-book-detail-hl-actions' });
+				this.createLocalButton(actions, h.markText);
 				this.createDeepLinkButton(actions, this.buildDeepLink(h.chapterUid, h.range));
 				this.createCopyButton(actions, h.markText);
 			}
@@ -876,9 +878,9 @@ export class WereadBookDetailView extends ItemView {
 
 	// ── 辅助方法 ────────────────────────────────────────────────
 
+	// weread:// 在 Windows 上打不开，改用网页阅读器的章节地址（在内置阅读视图打开）
 	private buildDeepLink(chapterUid: number, range: string): string {
-		const [start, end] = range.split('-');
-		return `weread://bestbookmark?bookId=${this.bookId}&chapterUid=${chapterUid}&rangeStart=${start}&rangeEnd=${end || start}`;
+		return getPcUrl(this.bookId) + 'k' + encodeWereadId(String(chapterUid));
 	}
 
 	private renderTextWithBreaks(container: HTMLElement, text: string, cls: string): void {
@@ -902,13 +904,25 @@ export class WereadBookDetailView extends ItemView {
 		});
 	}
 
+	private createLocalButton(container: HTMLElement, markText: string): void {
+		const btn = container.createEl('button', { cls: 'weread-book-detail-action-btn' });
+		setIcon(btn, 'book-open');
+		btn.setAttr('title', '跳转到本地原文');
+		btn.addEventListener('click', async (e) => {
+			e.stopPropagation();
+			const title = this.detail?.title || this.bookTitle;
+			const reason = await this.plugin.openLocalHighlight(title, markText);
+			if (reason) new Notice(reason);
+		});
+	}
+
 	private createDeepLinkButton(container: HTMLElement, deepLink: string): void {
 		const btn = container.createEl('button', { cls: 'weread-book-detail-action-btn' });
 		setIcon(btn, 'external-link');
 		btn.setAttr('title', '跳转到微信读书');
 		btn.addEventListener('click', (e) => {
 			e.stopPropagation();
-			window.open(deepLink, '_blank');
+			this.plugin.activateReadingView('TAB', deepLink);
 		});
 	}
 
