@@ -72,6 +72,7 @@ export class WereadSettingsTab extends PluginSettingTab {
 
 		this.notebookFolder();
 		this.localBookFolder();
+		this.cleanReaderSetting();
 		this.bookshelfSettings();
 		this.syncModeSettings();
 		this.scheduledSync();
@@ -195,6 +196,17 @@ export class WereadSettingsTab extends PluginSettingTab {
 					modal.open();
 				});
 			});
+	}
+
+	private cleanReaderSetting(): void {
+		new Setting(this.containerEl)
+			.setName('阅读视图简洁模式')
+			.setDesc('看书时隐藏顶栏和右侧工具栏，鼠标移上去再出现。改完重新打开阅读视图生效')
+			.addToggle((toggle) =>
+				toggle.setValue(get(settingsStore).cleanReader ?? true).onChange((value) => {
+					settingsStore.actions.setCleanReader(value);
+				})
+			);
 	}
 
 	private localBookFolder(): void {

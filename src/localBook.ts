@@ -360,6 +360,12 @@ export const parseHighlightsFromNote = (markdown: string): LocalHighlight[] => {
 			continue;
 		}
 		if (!current) continue;
+		if (/^🗑/.test(line)) {
+			// 微信读书里已删除的划线，不在原文上标
+			result.delete(normOnly(current.text));
+			current = null;
+			continue;
+		}
 		const label = line.match(/^🏷\uFE0F?\s*(.+)$/);
 		if (label) {
 			current.label = label[1].trim();

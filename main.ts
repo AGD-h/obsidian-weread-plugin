@@ -1,4 +1,4 @@
-import { Menu, Notice, Platform, Plugin, setIcon, TFile, WorkspaceLeaf } from 'obsidian';
+import { Events, Menu, Notice, Platform, Plugin, setIcon, TFile, WorkspaceLeaf } from 'obsidian';
 import FileManager from './src/fileManager';
 import SyncNotebooks from './src/syncNotebooks';
 import ApiRouter from './src/api-router';
@@ -9,7 +9,12 @@ import type { ReadingOpenMode } from './src/settings';
 import { get } from 'svelte/store';
 import { WereadSettingsTab } from './src/settingTab';
 import WereadBrowserWindow from './src/components/wereadBrowserWindow';
-import { WEREAD_BROWSER_VIEW_ID, WereadReadingView } from './src/components/wereadReading';
+import {
+	WEREAD_BOOK_OPENED_EVENT,
+	WEREAD_BROWSER_VIEW_ID,
+	WereadReadingView
+} from './src/components/wereadReading';
+import { encodeWereadId } from './src/parser/parseResponse';
 import { WEREAD_BOOKSHELF_VIEW_ID, WereadBookshelfView } from './src/components/wereadBookshelf';
 import { WEREAD_READING_STATS_VIEW_ID, WereadReadingStatsView } from './src/components/wereadReadingStats';
 import { WEREAD_BOOK_DETAIL_VIEW_ID, WereadBookDetailView } from './src/components/wereadBookDetailView';
@@ -51,6 +56,13 @@ export default class WereadPlugin extends Plugin {
 
 		// 启动时同步 Cookie 到 partition，供 webview 使用（非阻塞）
 		this.syncCookiesToPartition();
+
+		// 在阅读视图里打开一本书时，自动在右侧打开这本书的笔记
+		this.registerEvent(
+			(this.app.workspace as Events).on(WEREAD_BOOK_OPENED_EVENT, (bookHash: string, readerLeaf: WorkspaceLeaf) => {
+				this.openNoteBesideReader(bookHash, readerLeaf);
+			})
+		);
 
 		// 本地原文：划线跳到原文那一句；打开原文时标出划过的句子
 		const localBook = new LocalBookService(this.app);
@@ -352,6 +364,21 @@ export default class WereadPlugin extends Plugin {
 		}
 		await this.fileManager.deleteNotebookFile(targetFile);
 		new Notice('本地文件已删除');
+	}
+
+	/** 阅读视图打开某本书时，在它右侧打开这本书的同步笔记（已经开着就不动） */
+	private async openNoteBesideReader(bookHash: string, readerLeaf: WorkspaceLeaf) {
+		const note = this.app.vault.getMarkdownFiles().find((f) => {
+			const bookId = this.app.metadataCache.getFileCache(f)?.frontmatter?.bookId;
+			return bookId && encodeWereadId(String(bookId)) === bookHash;
+		});
+		if (!note) return;
+		const alreadyOpen = this.app.workspace
+			.getLeavesOfType('markdown')
+			.some((leaf) => (leaf.view as { file?: TFile }).file?.path === note.path);
+		if (alreadyOpen) return;
+		const leaf = this.app.workspace.createLeafBySplit(readerLeaf, 'vertical');
+		await leaf.openFile(note, { active: false });
 	}
 
 	/** 在本地原文里打开这条划线；成功返回 null，否则返回没打开的原因 */
