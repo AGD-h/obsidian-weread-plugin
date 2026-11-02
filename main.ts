@@ -1,4 +1,4 @@
-import { Menu, Notice, Platform, Plugin, setIcon, TFile, WorkspaceLeaf } from 'obsidian';
+import { Events, Menu, Notice, Platform, Plugin, setIcon, TFile, WorkspaceLeaf } from 'obsidian';
 import FileManager from './src/fileManager';
 import SyncNotebooks from './src/syncNotebooks';
 import ApiRouter from './src/api-router';
@@ -9,10 +9,17 @@ import type { ReadingOpenMode } from './src/settings';
 import { get } from 'svelte/store';
 import { WereadSettingsTab } from './src/settingTab';
 import WereadBrowserWindow from './src/components/wereadBrowserWindow';
-import { WEREAD_BROWSER_VIEW_ID, WereadReadingView } from './src/components/wereadReading';
+import {
+	WEREAD_BOOK_OPENED_EVENT,
+	WEREAD_BROWSER_VIEW_ID,
+	WereadReadingView
+} from './src/components/wereadReading';
+import { encodeWereadId } from './src/parser/parseResponse';
 import { WEREAD_BOOKSHELF_VIEW_ID, WereadBookshelfView } from './src/components/wereadBookshelf';
 import { WEREAD_READING_STATS_VIEW_ID, WereadReadingStatsView } from './src/components/wereadReadingStats';
 import { WEREAD_BOOK_DETAIL_VIEW_ID, WereadBookDetailView } from './src/components/wereadBookDetailView';
+import LocalBookService from './src/localBook';
+import LocalMarkToolbar from './src/localMarkToolbar';
 import './style.css';
 export default class WereadPlugin extends Plugin {
 	private syncNotebooks: SyncNotebooks;
@@ -22,6 +29,34 @@ export default class WereadPlugin extends Plugin {
 	private wereadSettingsTab!: WereadSettingsTab;
 	private syncing = false;
 	private scheduledSyncTimer: number | null = null;
+	localBook!: LocalBookService;
+	private apiRouter!: ApiRouter;
+
+	/**
+	 * 给“读书助手”用：返回微信读书书架上的书（书名、作者、bookId）。
+	 * 配了微信读书 API Key 时取完整书架，否则只能取有笔记的书。
+	 */
+	async getShelfBooks(): Promise<{ bookId: string; title: string; author: string }[]> {
+		const result = new Map<string, { bookId: string; title: string; author: string }>();
+		const add = (b: { bookId?: unknown; title?: unknown; author?: unknown } | undefined) => {
+			if (!b?.bookId || !b?.title) return;
+			const bookId = String(b.bookId);
+			if (!result.has(bookId)) result.set(bookId, { bookId, title: String(b.title), author: String(b.author ?? '') });
+		};
+		if (get(settingsStore).wereadApiKey) {
+			const shelf = await this.apiRouter.callAgentGateway<{ books?: { bookId?: string; title?: string; author?: string }[] }>(
+				'/shelf/sync'
+			);
+			(shelf?.books ?? []).forEach(add);
+		}
+		try {
+			const notebooks = await this.apiRouter.getNotebooksWithRetry();
+			(notebooks ?? []).forEach((n: any) => add(n?.book));
+		} catch (e) {
+			console.warn('[weread plugin] 取有笔记的书失败', e);
+		}
+		return Array.from(result.values());
+	}
 
 	onload() {
 		console.log('load weread plugin');
@@ -34,6 +69,7 @@ export default class WereadPlugin extends Plugin {
 		const fileManager = new FileManager(this.app.vault, this.app.metadataCache, this.app);
 		this.fileManager = fileManager;
 		const apiRouter = new ApiRouter();
+		this.apiRouter = apiRouter;
 		this.syncNotebooks = new SyncNotebooks(fileManager, apiRouter, this.app.vault);
 		this.bookshelfService = new WereadBookshelfService(fileManager, apiRouter);
 		this.syncReadingStats = new SyncReadingStats(this.app.vault, apiRouter);
@@ -49,6 +85,101 @@ export default class WereadPlugin extends Plugin {
 
 		// 启动时同步 Cookie 到 partition，供 webview 使用（非阻塞）
 		this.syncCookiesToPartition();
+
+		// 在阅读视图里打开一本书时，自动在右侧打开这本书的笔记
+		this.registerEvent(
+			(this.app.workspace as Events).on(WEREAD_BOOK_OPENED_EVENT, (bookHash: string, readerLeaf: WorkspaceLeaf) => {
+				this.openNoteBesideReader(bookHash, readerLeaf);
+			})
+		);
+
+		// 本地原文：划线跳到原文那一句；打开原文时标出划过的句子
+		const localBook = new LocalBookService(this.app);
+		this.localBook = localBook;
+		this.registerMarkdownPostProcessor(localBook.postProcessor());
+		this.registerEditorExtension(localBook.editorExtension());
+		// 在原文里选中文字：弹出和微信读书一样的划线工具条
+		const toolbar = new LocalMarkToolbar(this.app, localBook);
+		this.registerDomEvent(document, 'mouseup', (e: MouseEvent) => toolbar.onMouseUp(e));
+		this.registerDomEvent(document, 'mousedown', (e: MouseEvent) => toolbar.onMouseDown(e));
+		this.registerDomEvent(document, 'keydown', (e: KeyboardEvent) => e.key === 'Escape' && toolbar.hide());
+		this.registerDomEvent(document, 'scroll', () => toolbar.hide(), { capture: true });
+		this.registerEvent(this.app.workspace.on('active-leaf-change', () => toolbar.hide()));
+		this.register(() => toolbar.hide());
+		this.registerEvent(
+			this.app.vault.on('modify', (file) => {
+				if (file instanceof TFile && !localBook.isLocalBookFile(file)) {
+					localBook.clearCache();
+				}
+			})
+		);
+
+		// 点笔记里的划线（微信读书章节地址）：有本地原文就跳到原文那一句，否则在内置阅读视图打开。
+		// 阅读模式下链接是 <a>，在捕获阶段拦截；编辑/实时预览模式下 Obsidian 用 window.open 打开外链，一并拦截。
+		const isChapterLink = (url: string) =>
+			/^https:\/\/weread\.qq\.com\/web\/reader\/[^/?#k]+k[0-9a-f]+/.test(url);
+		let lastLinkText = '';
+		const openChapterLink = async (href: string, markText: string) => {
+			const active = this.app.workspace.getActiveFile();
+			const title = active
+				? this.app.metadataCache.getFileCache(active)?.frontmatter?.title
+				: undefined;
+			const reason = title
+				? await this.openLocalHighlight(String(title), markText)
+				: `当前笔记（${active?.path ?? '无'}）没有 title，无法确定是哪本书`;
+			if (!reason) return;
+			new Notice(`${reason}，改为打开微信读书`);
+			this.activateReadingView('TAB', href);
+		};
+		this.registerDomEvent(
+			document,
+			'mousedown',
+			(event: MouseEvent) => {
+				const target = event.target as HTMLElement | null;
+				const anchor = target?.closest?.('a');
+				const line = target?.closest?.('.cm-line');
+				if (anchor) {
+					lastLinkText = anchor.textContent ?? '';
+				} else if (line) {
+					// 实时预览：只取这一行里链接文字的部分，取不到再用整行
+					const linkText = Array.from(line.querySelectorAll('.cm-link'))
+						.map((el) => el.textContent ?? '')
+						.join('');
+					lastLinkText = linkText || line.textContent || '';
+				} else {
+					lastLinkText = '';
+				}
+			},
+			true
+		);
+		this.registerDomEvent(
+			document,
+			'click',
+			(event: MouseEvent) => {
+				const target = event.target as HTMLElement | null;
+				const anchor = target?.closest?.('a') as HTMLAnchorElement | null;
+				const href = anchor?.getAttribute('href') ?? '';
+				if (!isChapterLink(href)) {
+					return;
+				}
+				event.preventDefault();
+				event.stopPropagation();
+				openChapterLink(href, anchor?.textContent ?? '');
+			},
+			true
+		);
+		const originalOpen = window.open;
+		window.open = ((url?: string | URL, ...rest: unknown[]) => {
+			const href = url ? String(url) : '';
+			if (isChapterLink(href)) {
+				openChapterLink(href, lastLinkText);
+				return null;
+			}
+			return (originalOpen as (...args: unknown[]) => Window | null).call(window, url, ...rest);
+		}) as typeof window.open;
+		this.register(() => {
+			window.open = originalOpen;
+		});
 
 		const ribbonEl = this.addRibbonIcon('book-open', '打开微信读书书架', (event) => {
 			if (event.button === 0) {
@@ -270,6 +401,42 @@ export default class WereadPlugin extends Plugin {
 		}
 		await this.fileManager.deleteNotebookFile(targetFile);
 		new Notice('本地文件已删除');
+	}
+
+	/** 阅读视图打开某本书时，在它右侧打开这本书的同步笔记（已经开着就不动） */
+	private async openNoteBesideReader(bookHash: string, readerLeaf: WorkspaceLeaf) {
+		const note = this.app.vault.getMarkdownFiles().find((f) => {
+			const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
+			// 只认同步下来的书籍笔记（读书助手的设定.md 里也记着 bookId）
+			if (!fm?.bookId || fm.doc_type !== 'weread-highlights-reviews') return false;
+			return encodeWereadId(String(fm.bookId)) === bookHash;
+		});
+		if (!note) return;
+		const alreadyOpen = this.app.workspace
+			.getLeavesOfType('markdown')
+			.some((leaf) => (leaf.view as { file?: TFile }).file?.path === note.path);
+		if (alreadyOpen) return;
+		const leaf = this.app.workspace.createLeafBySplit(readerLeaf, 'vertical');
+		await leaf.openFile(note, { active: false });
+	}
+
+	/** 在本地原文里打开这条划线；成功返回 null，否则返回没打开的原因 */
+	async openLocalHighlight(bookTitle: string, markText: string): Promise<string | null> {
+		// 实时预览下取到的文字可能带链接地址和块编号，去掉
+		const text = markText
+			.replace(/\]\(<?[^)]*>?\)/g, '')
+			.replace(/\^[\w-]+/g, '');
+		if (!text.trim()) return '没取到划线文字';
+		try {
+			const result = await this.localBook.openHighlight(bookTitle, text);
+			if (result === 'ok') return null;
+			return result === 'no-folder'
+				? '本地原文文件夹里没找到这本书'
+				: '本地原文里没找到这句（版本文字可能不同）';
+		} catch (e) {
+			console.error('[weread plugin] 打开本地原文失败', e);
+			return `打开本地原文出错：${e}`;
+		}
 	}
 
 	async activateReadingView(type: string, url?: string) {

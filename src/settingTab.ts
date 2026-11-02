@@ -71,6 +71,8 @@ export class WereadSettingsTab extends PluginSettingTab {
 		this.showApiKeySetting();
 
 		this.notebookFolder();
+		this.localBookFolder();
+		this.cleanReaderSetting();
 		this.bookshelfSettings();
 		this.syncModeSettings();
 		this.scheduledSync();
@@ -194,6 +196,31 @@ export class WereadSettingsTab extends PluginSettingTab {
 					modal.open();
 				});
 			});
+	}
+
+	private cleanReaderSetting(): void {
+		new Setting(this.containerEl)
+			.setName('阅读视图简洁模式')
+			.setDesc('看书时隐藏顶栏和右侧工具栏，鼠标移上去再出现。改完重新打开阅读视图生效')
+			.addToggle((toggle) =>
+				toggle.setValue(get(settingsStore).cleanReader ?? true).onChange((value) => {
+					settingsStore.actions.setCleanReader(value);
+				})
+			);
+	}
+
+	private localBookFolder(): void {
+		new Setting(this.containerEl)
+			.setName('本地原文位置')
+			.setDesc('Epub Importer 导入的原文所在文件夹。点划线时会跳到这里对应的那一句，打开原文时会标出划过的句子')
+			.addText((text) =>
+				text
+					.setPlaceholder('读书/原文')
+					.setValue(get(settingsStore).localBookFolder ?? '读书/原文')
+					.onChange((value: string) => {
+						settingsStore.actions.setLocalBookFolder(value.trim() || '读书/原文');
+					})
+			);
 	}
 
 	private bookOpenModeSetting(): void {

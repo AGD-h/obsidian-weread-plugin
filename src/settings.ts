@@ -109,6 +109,8 @@ export interface WereadPluginSettings {
 	readingStatsLocation: string;
 	statsStartYear?: number;
 	popularHighlightsCacheTtl: number; // 天数，默认7
+	localBookFolder: string; // 本地原文（Epub Importer 导入）所在文件夹
+	cleanReader: boolean; // 阅读视图简洁模式
 }
 
 const DEFAULT_SETTINGS: WereadPluginSettings = {
@@ -169,6 +171,8 @@ const DEFAULT_SETTINGS: WereadPluginSettings = {
 	readingStatsLocation: '/',
 	statsStartYear: 0,  // 0 = use registTime from API
 	popularHighlightsCacheTtl: 7, // 默认7天
+	localBookFolder: '读书/原文',
+	cleanReader: true,
 };
 
 const createSettingsStore = () => {
@@ -413,6 +417,18 @@ const createSettingsStore = () => {
 	const setNoteLocationFolder = (value: string) => {
 		store.update((state) => {
 			state.noteLocation = value;
+			return state;
+		});
+	};
+	const setCleanReader = (value: boolean) => {
+		store.update((state) => {
+			state.cleanReader = value;
+			return state;
+		});
+	};
+	const setLocalBookFolder = (value: string) => {
+		store.update((state) => {
+			state.localBookFolder = value;
 			return state;
 		});
 	};
@@ -780,6 +796,8 @@ const createSettingsStore = () => {
 		actions: {
 			setLoginMethod,
 			setNoteLocationFolder,
+			setLocalBookFolder,
+			setCleanReader,
 			setCookies,
 			clearCookies,
 			markCookiesInvalid,

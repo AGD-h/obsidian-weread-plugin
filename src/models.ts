@@ -393,6 +393,7 @@ export type Highlight = {
 	chapterUid: number;
 	chapterIdx: number;
 	chapterTitle: string;
+	chapterHash?: string;
 	markText: string;
 	style: number;
 	colorStyle: number;
@@ -419,6 +420,7 @@ export type ChapterReview = {
 export type Review = {
 	reviewId: string;
 	chapterUid?: number;
+	chapterHash?: string;
 	chapterTitle?: string;
 	created: number;
 	createTime: string;

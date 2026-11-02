@@ -1,5 +1,6 @@
 import { Vault, MetadataCache, TFile, TFolder, Notice, TAbstractFile, App } from 'obsidian';
 import { Renderer } from './renderer';
+import { keepDeletedHighlights } from './utils/deletedHighlights';
 import { sanitizeTitle } from './utils/sanitizeTitle';
 import { AnnotationFile, DailyNoteReferenece, Metadata, Notebook } from './models';
 import { frontMatterDocType, buildFrontMatter } from './utils/frontmatter';
@@ -129,7 +130,8 @@ export default class FileManager {
 			if (localFile.new) {
 				const existingFile = localFile.file;
 				console.log(`Updating ${existingFile.path}`);
-				const freshContent = this.renderer.render(notebook);
+				const oldContent = await this.vault.read(existingFile);
+				const freshContent = keepDeletedHighlights(oldContent, this.renderer.render(notebook));
 				const fileContent = buildFrontMatter(freshContent, notebook, existingFile, this.app);
 				await this.vault.modify(existingFile, fileContent);
 				return existingFile.path;
