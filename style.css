@@ -4367,24 +4367,9 @@
 
 
 /* 本地原文里的微信读书划线，样式照微信读书阅读器：
-   观点=直线、疑问=波浪线、金句=马克笔；颜色取自划线的 colorStyle */
+   观点=直线、疑问=波浪线、金句=马克笔；目前统一用一种颜色 */
 .wr-local-hl {
 	--wr-hl: #4a90e2;
-}
-.wr-local-c1 {
-	--wr-hl: #e5534b;
-}
-.wr-local-c2 {
-	--wr-hl: #a66bdb;
-}
-.wr-local-c3 {
-	--wr-hl: #4a90e2;
-}
-.wr-local-c4 {
-	--wr-hl: #4caf6a;
-}
-.wr-local-c5 {
-	--wr-hl: #e0b43c;
 }
 mark.wr-local-hl,
 .wr-local-hl {
@@ -4458,7 +4443,7 @@ mark.wr-local-hl-thought,
 	height: 18px;
 }
 .wr-mark-colors {
-	display: flex;
+	display: none; /* 目前只用一种颜色，不显示选色 */
 	justify-content: center;
 	gap: 10px;
 	padding: 6px 0 2px;
