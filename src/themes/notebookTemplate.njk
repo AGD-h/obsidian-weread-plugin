@@ -33,13 +33,13 @@ lastReadDate: {{ metaData.lastReadDate }}
 {# 用户自己的划线 + 热门：📌🔥 + 共读人数 #}
 {% if highlight.reviewContent %}
 > 📌🔥 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
-{% if styleLabel %}> 🏷 {{ styleLabel }}
+{% if styleLabel %}> 🏷 {{ styleLabel }}{{ (" %%wr-color:" + highlight.colorStyle + "%%") if highlight.colorStyle is defined }}
 {% endif %}> 🔥 {{ highlight.popularCount }} 人共读
 > 💭 {{ highlight.reviewContent }} 
 > ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 {% else %}
 > 📌🔥 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
-{% if styleLabel %}> 🏷 {{ styleLabel }}
+{% if styleLabel %}> 🏷 {{ styleLabel }}{{ (" %%wr-color:" + highlight.colorStyle + "%%") if highlight.colorStyle is defined }}
 {% endif %}> 🔥 {{ highlight.popularCount }} 人共读
 > ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 
@@ -53,12 +53,12 @@ lastReadDate: {{ metaData.lastReadDate }}
 {# 普通用户划线（非热门）：📌 #}
 {% if highlight.reviewContent %}
 > 📌 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
-{% if styleLabel %}> 🏷 {{ styleLabel }}
+{% if styleLabel %}> 🏷 {{ styleLabel }}{{ (" %%wr-color:" + highlight.colorStyle + "%%") if highlight.colorStyle is defined }}
 {% endif %}> 💭 {{ highlight.reviewContent }} 
 > ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 {% else %}
 > 📌 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
-{% if styleLabel %}> 🏷 {{ styleLabel }}
+{% if styleLabel %}> 🏷 {{ styleLabel }}{{ (" %%wr-color:" + highlight.colorStyle + "%%") if highlight.colorStyle is defined }}
 {% endif %}> ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 
 {% endif %}
@@ -81,12 +81,12 @@ lastReadDate: {{ metaData.lastReadDate }}
 {# 普通用户划线（不显示热门）：📌 #}
 {% if highlight.reviewContent %}
 > 📌 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
-{% if styleLabel %}> 🏷 {{ styleLabel }}
-{% endif %} 💭 {{ highlight.reviewContent }} 
- ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
+{% if styleLabel %}> 🏷 {{ styleLabel }}{{ (" %%wr-color:" + highlight.colorStyle + "%%") if highlight.colorStyle is defined }}
+{% endif %}> 💭 {{ highlight.reviewContent }} 
+> ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 {% else %}
 > 📌 [{{ highlight.markText | trim }}](<{{ deeplink }}>)
-{% if styleLabel %}> 🏷 {{ styleLabel }}
+{% if styleLabel %}> 🏷 {{ styleLabel }}{{ (" %%wr-color:" + highlight.colorStyle + "%%") if highlight.colorStyle is defined }}
 {% endif %}> ⏱ {{ highlight.createTime }} ^{{ highlight.bookmarkId }}
 
 {% endif %}

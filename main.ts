@@ -397,8 +397,10 @@ export default class WereadPlugin extends Plugin {
 	/** 阅读视图打开某本书时，在它右侧打开这本书的同步笔记（已经开着就不动） */
 	private async openNoteBesideReader(bookHash: string, readerLeaf: WorkspaceLeaf) {
 		const note = this.app.vault.getMarkdownFiles().find((f) => {
-			const bookId = this.app.metadataCache.getFileCache(f)?.frontmatter?.bookId;
-			return bookId && encodeWereadId(String(bookId)) === bookHash;
+			const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
+			// 只认同步下来的书籍笔记（读书助手的设定.md 里也记着 bookId）
+			if (!fm?.bookId || fm.doc_type !== 'weread-highlights-reviews') return false;
+			return encodeWereadId(String(fm.bookId)) === bookHash;
 		});
 		if (!note) return;
 		const alreadyOpen = this.app.workspace

@@ -4366,24 +4366,48 @@
 }
 
 
-/* 本地原文里的微信读书划线：观点=直线、疑问=波浪线、金句=马克笔 */
+/* 本地原文里的微信读书划线，样式照微信读书阅读器：
+   观点=直线、疑问=波浪线、金句=马克笔；颜色取自划线的 colorStyle */
+.wr-local-hl {
+	--wr-hl: #4a90e2;
+}
+.wr-local-c1 {
+	--wr-hl: #e5534b;
+}
+.wr-local-c2 {
+	--wr-hl: #a66bdb;
+}
+.wr-local-c3 {
+	--wr-hl: #4a90e2;
+}
+.wr-local-c4 {
+	--wr-hl: #4caf6a;
+}
+.wr-local-c5 {
+	--wr-hl: #e0b43c;
+}
 mark.wr-local-hl,
 .wr-local-hl {
 	background: transparent;
 	color: inherit;
+	padding: 0;
 	text-decoration-line: underline;
+	text-decoration-style: solid;
 	text-decoration-thickness: 2px;
-	text-underline-offset: 4px;
-	text-decoration-color: var(--color-blue);
+	text-underline-offset: 5px;
+	text-decoration-color: var(--wr-hl);
+	text-decoration-skip-ink: none;
 }
+mark.wr-local-hl-question,
 .wr-local-hl-question {
 	text-decoration-style: wavy;
-	text-decoration-color: var(--color-orange);
+	text-decoration-thickness: 1px;
 }
 mark.wr-local-hl-quote,
 .wr-local-hl-quote {
 	text-decoration-line: none;
-	background: rgba(var(--color-yellow-rgb), 0.35);
+	background: color-mix(in srgb, var(--wr-hl) 30%, transparent);
+	border-radius: 2px;
 }
 .wr-local-hl-review {
 	cursor: help;

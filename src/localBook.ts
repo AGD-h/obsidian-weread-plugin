@@ -20,6 +20,7 @@ import { settingsStore } from './settings';
 export interface LocalHighlight {
 	text: string;
 	label?: string; // 观点 / 金句 / 疑问
+	color?: number; // 微信读书的划线颜色 colorStyle
 	review?: string;
 }
 
@@ -330,7 +331,9 @@ export default class LocalBookService {
 }
 
 const highlightClass = (h: LocalHighlight): string =>
-	`wr-local-hl ${(h.label && STYLE_CLASS[h.label]) || ''}${h.review ? ' wr-local-hl-review' : ''}`;
+	`wr-local-hl ${(h.label && STYLE_CLASS[h.label]) || ''}${h.color !== undefined ? ` wr-local-c${h.color}` : ''}${
+		h.review ? ' wr-local-hl-review' : ''
+	}`;
 
 const commonPrefix = (a: string, b: string): number => {
 	let i = 0;
@@ -368,7 +371,9 @@ export const parseHighlightsFromNote = (markdown: string): LocalHighlight[] => {
 		}
 		const label = line.match(/^🏷\uFE0F?\s*(.+)$/);
 		if (label) {
-			current.label = label[1].trim();
+			const color = label[1].match(/%%wr-color:(\d+)%%/);
+			if (color) current.color = Number(color[1]);
+			current.label = label[1].replace(/%%.*?%%/g, '').trim();
 			continue;
 		}
 		const review = line.match(/^💭\s*(.+)$/);
