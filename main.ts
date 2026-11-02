@@ -19,6 +19,7 @@ import { WEREAD_BOOKSHELF_VIEW_ID, WereadBookshelfView } from './src/components/
 import { WEREAD_READING_STATS_VIEW_ID, WereadReadingStatsView } from './src/components/wereadReadingStats';
 import { WEREAD_BOOK_DETAIL_VIEW_ID, WereadBookDetailView } from './src/components/wereadBookDetailView';
 import LocalBookService from './src/localBook';
+import LocalMarkToolbar from './src/localMarkToolbar';
 import './style.css';
 export default class WereadPlugin extends Plugin {
 	private syncNotebooks: SyncNotebooks;
@@ -97,6 +98,14 @@ export default class WereadPlugin extends Plugin {
 		this.localBook = localBook;
 		this.registerMarkdownPostProcessor(localBook.postProcessor());
 		this.registerEditorExtension(localBook.editorExtension());
+		// 在原文里选中文字：弹出和微信读书一样的划线工具条
+		const toolbar = new LocalMarkToolbar(this.app, localBook);
+		this.registerDomEvent(document, 'mouseup', (e: MouseEvent) => toolbar.onMouseUp(e));
+		this.registerDomEvent(document, 'mousedown', (e: MouseEvent) => toolbar.onMouseDown(e));
+		this.registerDomEvent(document, 'keydown', (e: KeyboardEvent) => e.key === 'Escape' && toolbar.hide());
+		this.registerDomEvent(document, 'scroll', () => toolbar.hide(), { capture: true });
+		this.registerEvent(this.app.workspace.on('active-leaf-change', () => toolbar.hide()));
+		this.register(() => toolbar.hide());
 		this.registerEvent(
 			this.app.vault.on('modify', (file) => {
 				if (file instanceof TFile && !localBook.isLocalBookFile(file)) {

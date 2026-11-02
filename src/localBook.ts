@@ -6,7 +6,7 @@ import {
 	TFile,
 	WorkspaceLeaf
 } from 'obsidian';
-import { RangeSetBuilder } from '@codemirror/state';
+import { RangeSetBuilder, StateEffect } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
 import { get } from 'svelte/store';
 import { settingsStore } from './settings';
@@ -22,7 +22,15 @@ export interface LocalHighlight {
 	label?: string; // 观点 / 金句 / 疑问
 	color?: number; // 微信读书的划线颜色 colorStyle
 	review?: string;
+	id?: string; // 块 id（本地划线用它来修改、删除）
+	local?: boolean; // 在本地原文上自己画的
 }
+
+/** 本地划线的样式：和微信读书工具条一致 */
+export type LocalMarkStyle = '金句' | '疑问' | '观点' | '想法';
+
+/** 让打开着的原文重新标记划线 */
+export const refreshMarksEffect = StateEffect.define<null>();
 
 interface NormalizedText {
 	norm: string;
@@ -32,8 +40,12 @@ interface NormalizedText {
 const STYLE_CLASS: Record<string, string> = {
 	观点: 'wr-local-hl-view',
 	金句: 'wr-local-hl-quote',
-	疑问: 'wr-local-hl-question'
+	疑问: 'wr-local-hl-question',
+	想法: 'wr-local-hl-thought'
 };
+
+/** 本地划线存放的文件名（放在同步下来的书籍笔记旁边，跟着库一起同步） */
+export const LOCAL_MARKS_FILE = '本地划线.md';
 
 const MIN_MATCH = 4;
 
@@ -76,9 +88,13 @@ export interface TextMatch {
 }
 
 /** 在 content 里找 markText：先精确找，找不到再按三字片段投票做模糊匹配（容忍版本间的字词差异） */
-export const findInText = (content: NormalizedText, markText: string): TextMatch | null => {
+export const findInText = (
+	content: NormalizedText,
+	markText: string,
+	minLen = MIN_MATCH
+): TextMatch | null => {
 	const needle = normOnly(markText);
-	if (needle.length < MIN_MATCH) return null;
+	if (needle.length < minLen || needle.length === 0) return null;
 	const toOriginal = (from: number, to: number, score: number): TextMatch => ({
 		start: content.map[from],
 		end: content.map[to - 1] + 1,
@@ -87,6 +103,7 @@ export const findInText = (content: NormalizedText, markText: string): TextMatch
 	const exact = content.norm.indexOf(needle);
 	if (exact >= 0) return toOriginal(exact, exact + needle.length, 1);
 	if (needle.length < 8) return null;
+	if (minLen < MIN_MATCH) return null; // 本地划线是从原文里选的，只做精确匹配
 
 	// 收集所有三字片段在原文中的命中位置，用一个比划线略长的滑动窗口找命中片段最多的一段
 	const hay = content.norm;
@@ -244,8 +261,84 @@ export default class LocalBookService {
 		const folderName = folderPath.slice(this.root.length + 1);
 		const note = this.findSyncedNote(folderName);
 		const list = note ? parseHighlightsFromNote(await this.app.vault.cachedRead(note)) : [];
+		const marksFile = this.app.vault.getAbstractFileByPath(this.marksPathFor(file) ?? '');
+		if (marksFile instanceof TFile) {
+			list.push(...parseHighlightsFromNote(await this.app.vault.cachedRead(marksFile), true));
+		}
 		this.highlightCache.set(folderPath, list);
 		return list;
+	}
+
+	/** 这本原文的本地划线文件：同步笔记所在文件夹里的「本地划线.md」；没有同步笔记就放在 读书/<书名>/ 下 */
+	marksPathFor(file: TFile): string | null {
+		const folderPath = this.bookFolderOf(file);
+		if (!folderPath) return null;
+		const folderName = folderPath.slice(this.root.length + 1);
+		const note = this.findSyncedNote(folderName);
+		if (note?.parent) return `${note.parent.path === '/' ? '' : note.parent.path + '/'}${LOCAL_MARKS_FILE}`;
+		const parent = this.root.includes('/') ? this.root.slice(0, this.root.lastIndexOf('/')) : '';
+		return `${parent ? parent + '/' : ''}${folderName}/${LOCAL_MARKS_FILE}`;
+	}
+
+	/** 在原文上画一条本地划线，返回它的 id */
+	async addMark(
+		file: TFile,
+		text: string,
+		style: LocalMarkStyle,
+		color: number,
+		review?: string
+	): Promise<string | null> {
+		const path = this.marksPathFor(file);
+		if (!path) return null;
+		const id = `wl-${Date.now().toString(36)}`;
+		const block = markBlock({ text, label: style, color, review, id });
+		const existing = this.app.vault.getAbstractFileByPath(path);
+		if (existing instanceof TFile) {
+			await this.app.vault.process(existing, (md) => md.replace(/\n*$/, '\n\n') + block);
+		} else {
+			const dir = path.slice(0, path.lastIndexOf('/'));
+			if (dir && !this.app.vault.getAbstractFileByPath(dir)) await this.app.vault.createFolder(dir);
+			const book = this.bookFolderOf(file)?.slice(this.root.length + 1) ?? '';
+			await this.app.vault.create(
+				path,
+				`---\ntype: 本地划线\n书名: ${JSON.stringify(book)}\n---\n# 本地划线\n\n在本地原文上画的划线和想法，由微信读书插件维护。\n\n${block}`
+			);
+		}
+		this.afterMarksChanged();
+		return id;
+	}
+
+	/** 修改本地划线（样式、颜色、想法）；patch 为 null 时删除 */
+	async updateMark(file: TFile, id: string, patch: Partial<LocalHighlight> | null) {
+		const path = this.marksPathFor(file);
+		const target = path && this.app.vault.getAbstractFileByPath(path);
+		if (!(target instanceof TFile)) return;
+		await this.app.vault.process(target, (md) => {
+			const lines = md.split('\n');
+			const start = lines.findIndex((l) => l.startsWith('> 📌') && l.includes(`^${id}`));
+			if (start < 0) return md;
+			let end = start + 1;
+			while (end < lines.length && lines[end].startsWith('>')) end++;
+			const old = parseHighlightsFromNote(lines.slice(start, end).join('\n'), true)[0];
+			if (!old) return md;
+			const replacement = patch ? markBlock({ ...old, ...patch }).trimEnd().split('\n') : [];
+			if (!patch && lines[end] === '') end++;
+			lines.splice(start, end - start, ...replacement);
+			return lines.join('\n');
+		});
+		this.afterMarksChanged();
+	}
+
+	private afterMarksChanged() {
+		this.clearCache();
+		// 重新标记打开着的原文
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || !this.isLocalBookFile(view.file)) continue;
+			if (view.getMode() === 'preview') view.previewMode.rerender(true);
+			const cm = (view.editor as unknown as { cm?: EditorView }).cm;
+			cm?.dispatch({ effects: refreshMarksEffect.of(null) });
+		}
 	}
 
 	private findSyncedNote(folderName: string): TFile | null {
@@ -288,7 +381,10 @@ export default class LocalBookService {
 					this.refresh();
 				}
 				update(update: ViewUpdate) {
-					if (update.docChanged) this.refresh();
+					const asked = update.transactions.some((t) =>
+						t.effects.some((e) => e.is(refreshMarksEffect))
+					);
+					if (update.docChanged || asked) this.refresh();
 				}
 				private async refresh() {
 					const version = ++this.version;
@@ -303,7 +399,7 @@ export default class LocalBookService {
 					const content = normalizeText(docText);
 					const ranges: { from: number; to: number; h: LocalHighlight }[] = [];
 					for (const h of highlights) {
-						const pos = findInText(content, h.text);
+						const pos = findInText(content, h.text, h.local ? 1 : MIN_MATCH);
 						if (pos) ranges.push({ from: pos.start, to: pos.end, h });
 					}
 					ranges.sort((a, b) => a.from - b.from);
@@ -316,7 +412,7 @@ export default class LocalBookService {
 							r.to,
 							Decoration.mark({
 								class: highlightClass(r.h),
-								attributes: r.h.review ? { title: `💭 ${r.h.review}` } : {}
+								attributes: markAttributes(r.h)
 							})
 						);
 						last = r.to;
@@ -330,6 +426,23 @@ export default class LocalBookService {
 	}
 }
 
+const markAttributes = (h: LocalHighlight): Record<string, string> => {
+	const attrs: Record<string, string> = {};
+	if (h.review) attrs.title = `💭 ${h.review}`;
+	if (h.local && h.id) attrs['data-wr-id'] = h.id;
+	return attrs;
+};
+
+/** 本地划线文件里的一条：格式和同步笔记一致 */
+const markBlock = (h: LocalHighlight): string =>
+	[
+		`> 📌 ${h.text.replace(/\s*\n\s*/g, ' ').trim()} ^${h.id}`,
+		`> 🏷 ${h.label}${h.color !== undefined ? ` %%wr-color:${h.color}%%` : ''}`,
+		...(h.review ? [`> 💭 ${h.review.replace(/\s*\n\s*/g, ' ').trim()}`] : []),
+		`> ⏱ ${window.moment().format('YYYY-MM-DD HH:mm:ss')}`,
+		''
+	].join('\n') + '\n';
+
 const highlightClass = (h: LocalHighlight): string =>
 	`wr-local-hl ${(h.label && STYLE_CLASS[h.label]) || ''}${h.color !== undefined ? ` wr-local-c${h.color}` : ''}${
 		h.review ? ' wr-local-hl-review' : ''
@@ -342,7 +455,8 @@ const commonPrefix = (a: string, b: string): number => {
 };
 
 /** 解析同步笔记里的划线：📌 行是划线，后面的 🏷 行是样式，💭 行是想法 */
-export const parseHighlightsFromNote = (markdown: string): LocalHighlight[] => {
+export const parseHighlightsFromNote = (markdown: string, local = false): LocalHighlight[] => {
+	const minLen = local ? 1 : MIN_MATCH;
 	const result = new Map<string, LocalHighlight>();
 	let current: LocalHighlight | null = null;
 	for (const raw of markdown.split('\n')) {
@@ -352,20 +466,21 @@ export const parseHighlightsFromNote = (markdown: string): LocalHighlight[] => {
 			let text = mark[1];
 			const link = text.match(/^\[(.*)\]\(<?[^)]*>?\)/);
 			if (link) text = link[1];
+			const id = text.match(/\s\^([\w-]+)\s*$/)?.[1];
 			text = text.replace(/\s*\^[\w-]+\s*$/, '').trim();
-			const key = normOnly(text);
-			if (key.length < MIN_MATCH) {
+			const key = local ? `${id}` : normOnly(text);
+			if (normOnly(text).length < minLen) {
 				current = null;
 				continue;
 			}
-			current = result.get(key) ?? { text };
+			current = result.get(key) ?? { text, id, local: local || undefined };
 			result.set(key, current);
 			continue;
 		}
 		if (!current) continue;
 		if (/^🗑/.test(line)) {
 			// 微信读书里已删除的划线，不在原文上标
-			result.delete(normOnly(current.text));
+			result.delete(local ? `${current.id}` : normOnly(current.text));
 			current = null;
 			continue;
 		}
@@ -400,7 +515,7 @@ const markInElement = (block: HTMLElement, h: LocalHighlight) => {
 		full += node.data;
 	}
 	if (nodes.length === 0) return;
-	const pos = findInText(normalizeText(full), h.text);
+	const pos = findInText(normalizeText(full), h.text, h.local ? 1 : MIN_MATCH);
 	if (!pos) return;
 	// 逐个文本节点切出要标记的部分
 	for (let i = nodes.length - 1; i >= 0; i--) {
@@ -414,7 +529,7 @@ const markInElement = (block: HTMLElement, h: LocalHighlight) => {
 		if (from - nodeStart > 0) node = node.splitText(from - nodeStart);
 		const markEl = document.createElement('mark');
 		markEl.className = highlightClass(h);
-		if (h.review) markEl.title = `💭 ${h.review}`;
+		for (const [k, v] of Object.entries(markAttributes(h))) markEl.setAttribute(k, v);
 		node.parentNode?.insertBefore(markEl, node);
 		markEl.appendChild(node);
 	}
